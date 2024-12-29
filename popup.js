@@ -1,8 +1,8 @@
 let scrapeEmails = document.getElementById("scrapeEmails");
 
 // handler to get emails from content script
-// this is a service worker and we use onMessage this event to listen for messages from another part of my extension.
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    console.log("Message received", request);
     let emailList = document.getElementById("emailList");
 
     // get emails
@@ -19,8 +19,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 let li = document.createElement("li");
                 li.innerText = email;
                 emailList.appendChild(li);
-                console.log(emailList);
             }
+        }
+        // After collecting emails, trigger CSV download
+        if (emailArr.length > 0) {
+            createCSVDownload(emailArr);
         }
     } else {
         alert("No emails found");
@@ -34,8 +37,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 scrapeEmails.addEventListener("click", async () => {
     // getting the current active tab of chrome window
     let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    // alert("hello world");
-
+    console.log("Active tab:", tab); 
     // script to parse emails on page
     chrome.scripting.executeScript({
         target: { tabId: tab.id },
@@ -44,13 +46,35 @@ scrapeEmails.addEventListener("click", async () => {
 });
 
 // function to scrape emails
-// this is the content script
 function scrapeEmailsFromPage() {
     const emailRegex = /[\w\.=-]+@[\w\.-]+\.[\w]{2,3}/gim;
     // parse emails from html of the page
     let emails = document.body.innerHTML.match(emailRegex);
-    const sending = chrome.runtime.sendMessage({
+    chrome.runtime.sendMessage({
         emails,
     });
-    // alert(emails);
+}
+
+// function to create and download CSV using chrome.downloads.download
+function createCSVDownload(emailArr) {
+    console.log("email array:" + emailArr);
+
+    // Create CSV content
+    const csvContent = "Email\n" + emailArr.join("\n");
+
+    // Create Blob from CSV content
+    const blob = new Blob([csvContent], { type: "text/csv" });
+
+    // Use chrome.downloads.download API to download the CSV file
+    const url = URL.createObjectURL(blob);
+    chrome.downloads.download({
+        url: url,
+        filename: "emails.csv",  // Name of the CSV file
+        saveAs: true,            // Prompt the user to choose the location
+    }, (downloadId) => {
+        // Optional: Handle any post-download actions if needed
+        console.log("Download started, ID:", downloadId);
+        // Revoke the object URL to free memory after download is initiated
+        URL.revokeObjectURL(url);
+    });
 }
